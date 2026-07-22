@@ -1,0 +1,10 @@
+.DS_Store
+
+# playwright-cli run traces (generated per audit run)
+.playwright-cli/
+
+# Screenshots captured during audit runs
+*.png
+
+# Backup files
+*.bak
