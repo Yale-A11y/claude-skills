@@ -186,7 +186,12 @@ async page => JSON.stringify(await page.evaluate(() => {
   });
   const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading]'))
     .map(el => ({
-      level: el.getAttribute('aria-level') ? Number(el.getAttribute('aria-level')) : Number(el.tagName[1]),
+      // Explicit aria-level wins; else the level from an <h1>–<h6> tag; else a
+      // role="heading" on a non-heading tag (e.g. <div role="heading">) defaults to 2
+      // per ARIA — never Number('I')=NaN, which would silently break skip detection.
+      level: el.getAttribute('aria-level')
+        ? Number(el.getAttribute('aria-level'))
+        : (/^H[1-6]$/.test(el.tagName) ? Number(el.tagName[1]) : 2),
       text: el.textContent.trim().slice(0, 60),
     }));
   const skips = [];

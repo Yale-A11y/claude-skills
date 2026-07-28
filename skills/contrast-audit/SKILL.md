@@ -1,6 +1,6 @@
 ---
 name: contrast-audit
-description: Audits contrast on a live page — text contrast (WCAG 1.4.3, 4.5:1 normal / 3:1 large-bold), non-text/UI-component contrast (WCAG 1.4.11, 3:1 for control boundaries and meaningful graphics), and keyboard focus-indicator contrast (WCAG 2.4.11 / 1.4.11, the focus ring must be 3:1 against adjacent colors) — entirely through the browser via playwright-cli, never by reading or grepping source code. Normalizes every color through a rasterized canvas pixel so modern CSS color spaces (oklch/oklab/lab/lch/color(), e.g. Tailwind v4) are handled correctly instead of producing false failures, walks up for the effective background, and exempts genuinely disabled controls. Complements focus-visibility-audit (which checks whether a focus indicator EXISTS and is reachable; this checks whether it has enough CONTRAST). Writes a self-contained, fix-ready Markdown report, or returns a findings block when the accessibility-audit router dispatches it with --findings-only. Takes the target URL as its argument, with an optional second argument for the report's output path. Part of the accessibility-audit suite; works even without repo access. Triggers on "color contrast audit", "contrast check", "WCAG contrast", "text contrast a11y", "non-text contrast", "focus indicator contrast", "/contrast-audit".
+description: Audits contrast on a live page — text contrast (WCAG 1.4.3, 4.5:1 normal / 3:1 large-bold), non-text/UI-component contrast (WCAG 1.4.11, 3:1), and keyboard focus-indicator contrast (WCAG 2.4.11 / 1.4.11, 3:1 against adjacent colors) — entirely through the browser via playwright-cli, never by reading or grepping source code. Normalizes every color through a rasterized canvas pixel so modern CSS color spaces (oklch/oklab/lab/lch/color(), e.g. Tailwind v4) are handled correctly and walks up for the effective background. Complements focus-visibility-audit (which checks whether a focus indicator EXISTS; this checks whether it has enough CONTRAST). Writes a self-contained, fix-ready Markdown report, or returns a findings block when the accessibility-audit router dispatches it with --findings-only. Part of the accessibility-audit suite; works even without repo access. Triggers on "color contrast audit", "contrast check", "WCAG contrast", "non-text contrast", "focus indicator contrast", "/contrast-audit".
 argument-hint: "[url] [output-path]"
 arguments: [url, output]
 ---
@@ -83,6 +83,14 @@ the original color-space string. The only reliable normalizer is to fill a 1×1 
 pixel with the color and read back the rasterized bytes via `getImageData`, which always
 yields concrete sRGB 0–255 values regardless of input color space. Every script below
 carries this `toRgbArray`/`luminance`/`contrastRatio` trio for that reason.
+
+**Caveat — semi-transparent colors are not composited.** These scripts read each color's
+own bytes but do not blend a partially-transparent foreground/border over what's behind
+it, and `effectiveBg` returns the first ancestor background with alpha > 2 rather than
+compositing a stack of translucent layers. So a ratio computed for text or a border using
+`rgba(…, 0.5)` (or a translucent overlay) can be off from what actually renders — treat
+those specific cases as approximate and **confirm the borderline ones against a
+screenshot**, the same as for background images/gradients.
 
 ## Step 1 — Text contrast (WCAG 1.4.3)
 
@@ -344,6 +352,10 @@ async page => {
   return JSON.stringify(results, null, 1);
 }
 ```
+
+This walk stops after 60 Tab presses. If the tail was still landing on real controls when
+it stopped, focus-indicator contrast was only checked for the first ~60 stops — **note the
+truncation in the report** instead of implying full coverage.
 
 Flag:
 - `uaAutoRing === true` → **do NOT flag from computed contrast, ever.** `outline-style:

@@ -1,6 +1,6 @@
 ---
 name: form-labels-audit
-description: Audits form control labeling on a live page — entirely through the browser via playwright-cli, never by reading or grepping source code. Detects missing accessible names, visual-only labels (label-shaped text sitting next to a field with no programmatic association), orphaned <label for> pointing at a stale/typo'd id, placeholder-only labels, missing visible labels (a control has a real accessible name but nothing shows on screen for sighted/low-vision users), error text not wired via aria-describedby, and missing or invalid autocomplete/input-purpose values on fields that collect user info (WCAG 1.3.5). Writes a self-contained, fix-ready Markdown report, or returns a findings block when the accessibility-audit router dispatches it with --findings-only. Takes the target URL as its argument, with an optional second argument for the report's output path. Part of the accessibility-audit suite; works even without repo access. Triggers on "form label audit", "input labeling check", "form accessibility", "aria-label check", "autocomplete check", "input purpose", "/form-labels-audit".
+description: Audits form control labeling on a live page — entirely through the browser via playwright-cli, never by reading or grepping source code. Detects missing accessible names, visual-only labels (text next to a field with no programmatic association), orphaned <label for> pointing at a stale/typo'd id, placeholder-only labels, missing visible labels, error text not wired via aria-describedby, and missing or invalid autocomplete/input-purpose values on fields that collect user info (WCAG 1.3.5). Writes a self-contained, fix-ready Markdown report, or returns a findings block when the accessibility-audit router dispatches it with --findings-only. Part of the accessibility-audit suite; works even without repo access. Triggers on "form label audit", "input labeling check", "form accessibility", "aria-label check", "autocomplete check", "input purpose", "/form-labels-audit".
 argument-hint: "[url] [output-path]"
 arguments: [url, output]
 ---
@@ -106,10 +106,14 @@ async page => JSON.stringify(await page.evaluate(() => {
   // Geometric proximity: does label-shaped text sit directly above/left of an
   // unlabeled control with zero DOM/ARIA relationship to it? This is what a sighted
   // QA pass "sees" as the label even though no association exists.
+  // Collect label-shaped elements ONCE (not per control) — this query + its el-independent
+  // filter is the same for every field, so hoisting it out of findNearbyVisualLabel avoids
+  // a full-document querySelectorAll per control on form-heavy pages.
+  const labelCandidateEls = Array.from(document.querySelectorAll('label, span, div, p, td, th, dt, legend'))
+    .filter(c => !c.querySelector('input, select, textarea'));
   function findNearbyVisualLabel(el) {
     const rect = el.getBoundingClientRect();
-    const candidates = Array.from(document.querySelectorAll('label, span, div, p, td, th, dt, legend'))
-      .filter(c => c !== el && !el.contains(c) && !c.contains(el) && !c.querySelector('input, select, textarea'));
+    const candidates = labelCandidateEls.filter(c => c !== el && !el.contains(c) && !c.contains(el));
     let best = null, bestDist = Infinity;
     for (const c of candidates) {
       const text = (c.textContent || '').trim();

@@ -1,6 +1,6 @@
 ---
 name: images-media-audit
-description: Audits images, video, and icons on a live page for accessible alternatives — entirely through the browser via playwright-cli, never by reading or grepping source code. Flags missing alt attributes, empty alt on image-only links/buttons (zero accessible name), filename/placeholder-looking alt, videos without caption/subtitle tracks, standalone icon SVGs with no title or aria-label, and CSS background-image / icon-font icons that are either the sole unnamed content of a control or carry meaning with no text equivalent (distinguishing them from purely decorative icons that repeat adjacent text). Writes a self-contained, fix-ready Markdown report, or returns a findings block when the accessibility-audit router dispatches it with --findings-only. Takes the target URL as its argument, with an optional second argument for the report's output path. Part of the accessibility-audit suite; works even without repo access. Triggers on "image alt audit", "alt text check", "media accessibility", "svg icon a11y", "css background icon", "icon font a11y", "/images-media-audit".
+description: Audits images, video, and icons on a live page for accessible alternatives — entirely through the browser via playwright-cli, never by reading or grepping source code. Flags missing alt attributes, empty alt on image-only links/buttons, filename/placeholder-looking alt, videos without caption/subtitle tracks, standalone icon SVGs with no title or aria-label, and CSS background-image / icon-font icons that are the sole unnamed content of a control or carry meaning with no text equivalent (vs. purely decorative icons that repeat adjacent text). Writes a self-contained, fix-ready Markdown report, or returns a findings block when the accessibility-audit router dispatches it with --findings-only. Part of the accessibility-audit suite; works even without repo access. Triggers on "image alt audit", "alt text check", "media accessibility", "svg icon a11y", "css background icon", "icon font a11y", "/images-media-audit".
 argument-hint: "[url] [output-path]"
 arguments: [url, output]
 ---
@@ -69,14 +69,26 @@ playwright-cli --raw run-code --filename=images-media.js
 ```js
 // images-media.js
 async page => JSON.stringify(await page.evaluate(() => {
-  const imgs = Array.from(document.querySelectorAll('img')).map(img => ({
-    src: (img.currentSrc || img.src || '').split('/').pop(),
-    hasAltAttr: img.hasAttribute('alt'),
-    alt: img.getAttribute('alt'),
-    inLink: !!img.closest('a, button'),
-    linkHasOtherText: !!img.closest('a, button') &&
-      (img.closest('a, button').textContent || '').trim().length > 0,
-  }));
+  // Does the ancestor link/button have an accessible name from something OTHER than this
+  // image — visible text, aria-label, or aria-labelledby? Checking textContent alone
+  // false-positives on e.g. <a aria-label="Home"><img alt=""></a>, which is fine.
+  const controlHasOtherName = ctrl => {
+    if (!ctrl) return false;
+    if ((ctrl.textContent || '').trim().length > 0) return true;
+    if ((ctrl.getAttribute('aria-label') || '').trim().length > 0) return true;
+    return (ctrl.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
+      .some(id => (document.getElementById(id)?.textContent || '').trim().length > 0);
+  };
+  const imgs = Array.from(document.querySelectorAll('img')).map(img => {
+    const ctrl = img.closest('a, button');
+    return {
+      src: (img.currentSrc || img.src || '').split('/').pop(),
+      hasAltAttr: img.hasAttribute('alt'),
+      alt: img.getAttribute('alt'),
+      inLink: !!ctrl,
+      linkHasOtherText: controlHasOtherName(ctrl),
+    };
+  });
   const videos = Array.from(document.querySelectorAll('video')).map(v => ({
     hasCaptionTrack: !!v.querySelector('track[kind=captions], track[kind=subtitles]'),
     hasControls: v.hasAttribute('controls'),
@@ -93,7 +105,10 @@ async page => JSON.stringify(await page.evaluate(() => {
   // them. Collect the signals needed to judge each as decorative (redundant with adjacent
   // text → correct as-is, nothing to fix) vs informative-but-unnamed (carries meaning with
   // no text equivalent, or is the sole content of an unnamed control → a real failure).
-  const ICON_CLASS_RE = /\b(icon|fa|fas|far|fab|glyphicon|material-icons|bi|ico|svg-icon)[-\b]/i;
+  // Token followed by a hyphen ("fa-star") OR a word boundary ("icon"/"fa" alone). NOTE:
+  // `\b` inside a character class means backspace, not a word boundary — `[-\b]` would
+  // wrongly require a trailing hyphen/backspace and miss a bare class="icon"/"fa".
+  const ICON_CLASS_RE = /\b(icon|fa|fas|far|fab|glyphicon|material-icons|bi|ico|svg-icon)(?:-|\b)/i;
   const ICON_FONT_RE = /awesome|material icons|material-icons|glyphicon|bootstrap-icons|ionicons|feather/i;
   const controlInfo = el => {
     const ctrl = el.closest('a, button, [role=button], [role=link]');

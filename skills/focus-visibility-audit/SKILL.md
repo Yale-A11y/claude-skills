@@ -99,6 +99,12 @@ async page => {
 }
 ```
 
+This walk stops after 60 Tab presses. If the last recorded step still lands on a real
+control (i.e. the page has more than ~60 focusable stops and the walk didn't wrap back to
+the top or reach `<body>`), coverage was truncated — **say so in the report** ("first 60
+focus stops checked") rather than implying the whole page was covered, and re-run from a
+deeper starting point if the tail matters.
+
 Flag any stop where `likelyNoVisibleFocus === true` → **Serious** (WCAG 2.4.7) — confirm
 visually with a screenshot before finalizing, since some sites replace the outline with a
 background-color or text-decoration change that this heuristic can't see in computed

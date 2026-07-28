@@ -76,6 +76,26 @@ async page => JSON.stringify(await page.evaluate(() => {
   // Normalize for comparison: lowercase, collapse whitespace, strip surrounding punctuation.
   const norm = s => (s || '').toLowerCase().replace(/\s+/g, ' ').replace(/[.,:;!?'"()\[\]{}]/g, '').trim();
 
+  // Content-derived accessible name: like textContent, but excludes aria-hidden subtrees
+  // and display:none/visibility:hidden nodes (none of which contribute to the accessible
+  // name), while KEEPING sr-only/clipped text (which does). Using raw textContent here
+  // would treat an icon-only button whose only text is inside an aria-hidden span
+  // (e.g. <button><span aria-hidden="true">×</span></button>) as named, so its genuinely
+  // empty accessible name would never be flagged.
+  function accessibleContent(el) {
+    let out = '';
+    const walk = node => {
+      if (node.nodeType === 3) { out += node.textContent; return; }
+      if (node.nodeType !== 1) return;
+      if (node.getAttribute('aria-hidden') === 'true') return;
+      const st = getComputedStyle(node);
+      if (st.display === 'none' || st.visibility === 'hidden') return;
+      for (const c of node.childNodes) walk(c);
+    };
+    for (const c of el.childNodes) walk(c);
+    return out.replace(/\s+/g, ' ').trim();
+  }
+
   // Text a SIGHTED user actually sees: skip aria-hidden subtrees, display:none/visibility:hidden,
   // and sr-only-clipped nodes (which count toward the accessible name but render nothing).
   function visibleText(el) {
@@ -101,7 +121,7 @@ async page => JSON.stringify(await page.evaluate(() => {
   const unnamed = [], labelInName = [], fakeAnchors = [];
 
   for (const el of els) {
-    const contentName = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    const contentName = accessibleContent(el);
     const ariaLabel = el.getAttribute('aria-label');
     const lbIds = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
     const lbText = lbIds.map(id => document.getElementById(id)?.textContent?.trim()).filter(Boolean).join(' ');

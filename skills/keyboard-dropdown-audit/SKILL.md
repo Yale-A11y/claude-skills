@@ -98,6 +98,11 @@ async page => {
 Flag any stop where `ariaHaspopup`/`ariaExpanded` is present, or where the label/icon
 implies a menu (chevron, ellipsis, "Settings", "More", "File", etc.) even without ARIA.
 
+This walk stops after 80 Tab presses. If the last stops were still landing on real
+controls (the page has more focusable stops than that), the inventory is incomplete —
+note it in the report and re-run from a deeper starting point so later triggers aren't
+silently missed.
+
 Icon-only triggers (no visible text, just an `aria-label`) need probe scripts that
 match on `getAttribute('aria-label')` instead of `textContent` — a probe written to
 match by trimmed text will silently fail to find them and report a false "not found."
