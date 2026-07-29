@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A **Claude Code plugin** (`accessibility-audit`) whose payload is a suite of accessibility-auditing skills — not an application. There is no build, test, or lint step; the "code" is Markdown instructions (`SKILL.md`) plus small JavaScript snippets that run in the browser via `playwright-cli`. "Running" a skill means invoking it in Claude Code (e.g. `/accessibility-audit <url>`); the deliverable is a fix-ready Markdown report written to a resolved output path.
 
-The plugin manifest is `.claude-plugin/plugin.json`. Every skill lives in its own directory under `skills/` (auto-discovered by Claude Code): a required `SKILL.md` with YAML frontmatter (`name`, `description`, `argument-hint`, `arguments: [url, output]`) followed by the instruction body, plus any helper `*.js` files. To develop/test the plugin locally, load it with `claude --plugin-dir .` from the repo root.
+To develop/test the plugin locally, load it with `claude --plugin-dir .` from the repo root.
 
 ## Architecture
 
@@ -34,7 +34,3 @@ Skills drive the page with `playwright-cli`:
 - `playwright-cli --raw run-code --filename=<script>.js` — runs a helper script exporting `async page => { … }` and returns its JSON string. The helper `*.js` files (e.g. `skills/focus-visibility-audit/focus-visibility.js`) are the extracted, runnable form of the JS shown inline in the `SKILL.md` Steps — keep the two in sync when editing either.
 - `playwright-cli --raw eval "<expr>"`, `playwright-cli press <Key>`, `playwright-cli screenshot --path=<f>`, `playwright-cli generate-locator <ref>` (stable locator for handoff), `playwright-cli -s=<session> close` / `playwright-cli close-all`.
 - Do a connectivity check (`curl -s -o /dev/null -w '%{http_code}' <url>`) before opening, so a dead URL fails fast instead of timing out.
-
-## Repo hygiene notes
-
-`.gitignore` ignores the runtime/generated artifacts a run produces so they don't get committed: `.playwright-cli/` (page `.yml` + `console-*.log` run traces, e.g. under `skills/*/.playwright-cli/`), `*.png` (screenshots from a run, e.g. under `skills/focus-visibility-audit/`), and `*.bak` (e.g. `skills/accessibility-audit/SKILL.md.bak`). The globs are location-independent, so they keep working now that the skills live under `skills/`.
