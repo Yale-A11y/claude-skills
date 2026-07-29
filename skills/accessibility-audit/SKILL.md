@@ -108,7 +108,8 @@ for the entire audit, not just one step:
   **no** files — only this router writes, and only to `$output`.
 - **Scripts** — Step 1 runs a bundled script via `--filename`. `$SKILL_DIR` means the base
   directory for this skill given at the top of this file; substitute that absolute path.
-  Never retype, inline, or re-create a script body.
+  Never retype, inline, or re-create a script body. Any command reproduced in the report
+  must use the resolved absolute path, never the literal `$SKILL_DIR`.
 
 ## Step 1 — Fingerprint the page
 
