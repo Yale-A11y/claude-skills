@@ -48,6 +48,26 @@ claude --plugin-dir /path/to/claude-skills
 
 Skill files are read when a session starts, so **restart Claude Code after editing a `SKILL.md`** — mid-session edits won't take effect in that session.
 
+### Repo layout
+
+```
+.claude-plugin/
+  marketplace.json          marketplace "yale-a11y" — publishes the plugin below
+  plugin.json               plugin manifest
+skills/
+  structure-audit/          every skill follows this shape
+    SKILL.md                checks, flagging rules, findings format
+    scripts/                browser probes, run via `run-code --filename`
+      page-checks.js
+    references/             loaded on demand, not on every run
+      fix-patterns.md       read only when a run has ≥1 finding
+      standalone-report.md  read only when run directly, not router-dispatched
+```
+
+`SKILL.md` carries only what every run needs; `scripts/` and `references/` load when actually used, so a skill's context cost stays proportional to the work it does. Two skills deviate: the `accessibility-audit` router has no `references/` (it merges what its subagents return), and `keyboard-dropdown-audit` has no `standalone-report.md` because it only ever runs standalone — and no `scripts/` yet, since its probes are per-trigger parameterized and still inline pending extraction.
+
+The `scripts/*.js` files are the single source of truth for the probes — **never inline a script body back into `SKILL.md`** (`keyboard-dropdown-audit` is the one outstanding exception, not a pattern to copy). A Step names the script, describes the shape it returns, and interprets the fields. See `CLAUDE.md` for the full conventions.
+
 ## Usage
 
 ```
