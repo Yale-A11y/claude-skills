@@ -23,15 +23,30 @@ The `accessibility-audit` skill is an **orchestrator**: it opens the page once, 
 
 ## Installation
 
-Load the plugin locally from a clone of this repo:
+Add the marketplace, then install the plugin:
+
+```
+/plugin marketplace add Yale-A11y/claude-skills
+/plugin install accessibility-audit@yale-a11y
+```
+
+`Yale-A11y/claude-skills` is GitHub `owner/repo` shorthand. A local clone works as a source too:
+
+```
+/plugin marketplace add /path/to/claude-skills
+```
+
+The marketplace is named `yale-a11y` (`.claude-plugin/marketplace.json`) and publishes a single plugin, `accessibility-audit` (`.claude-plugin/plugin.json`) — hence the `accessibility-audit@yale-a11y` target. Claude Code auto-discovers every skill under `skills/`.
+
+### Working on the plugin
+
+To load a working copy without installing it:
 
 ```
 claude --plugin-dir /path/to/claude-skills
 ```
 
-The plugin manifest lives at `.claude-plugin/plugin.json`; Claude Code auto-discovers every skill under `skills/`.
-
-> To make this installable via `/plugin install`, add a `.claude-plugin/marketplace.json` entry pointing at this repo. It isn't included yet.
+Skill files are read when a session starts, so **restart Claude Code after editing a `SKILL.md`** — mid-session edits won't take effect in that session.
 
 ## Usage
 
