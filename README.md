@@ -78,6 +78,10 @@ The `scripts/*.js` files are the single source of truth for the probes — **nev
 
 Each skill takes the target URL as its first argument and an optional output path as the second. Re-running the same path **overwrites** the report — intentional, for a fix-then-reaudit loop.
 
+## Changelog
+
+Release history is in [CHANGELOG.md](CHANGELOG.md). Skills are read at session start, so restart Claude Code after upgrading.
+
 ## Requirements
 
 - Claude Code with the `playwright-cli` tool available.
