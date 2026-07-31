@@ -35,7 +35,8 @@ naming, and contrast.
 - **`--session=<name>`** — prefix every command (`playwright-cli -s=<name> ...`). This
   matters especially here: the skill presses `Tab` up to 60 times, so it MUST have its own
   session or it will disturb any other audit sharing the browser's focus state.
-- **Scripts** — each Step runs a bundled script via `--filename`. `$SKILL_DIR` means the
+- **Scripts** — the Step runs ONE bundled script via `--filename`
+  (`scripts/focus-checks.js`), which carries both probes. `$SKILL_DIR` means the
   base directory for this skill given at the top of this file; substitute that absolute
   path. Never retype, inline, or re-create a script body. **A finding's `Repro` line must
   show the resolved absolute path**, never the literal `$SKILL_DIR` — the report is read
@@ -55,16 +56,17 @@ saying where it was found and that it was not acted on. (Full policy: the
 
 ## Step — Focus visibility and general Tab reachability
 
-Walk the page with Tab and record whether each stop has a visible focus indicator. Open
-the resolved target URL (`playwright-cli open $url`, or `-s=<name> open $url`), then:
+Walk the page with Tab and record whether each stop has a visible focus indicator, and
+enumerate the controls Tab never reaches. Open the resolved target URL (`playwright-cli
+open $url`, or `-s=<name> open $url`), then run **both probes in one call**:
 
 ```bash
-playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/focus-visibility.js"
+playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/focus-checks.js"
 ```
 
-Returns one entry per Tab stop (up to 60): `{step, tag, text, tabIndex,
-outlineStyle, outlineWidth, boxShadow, likelyNoVisibleFocus}`. A stop that landed on `<body>` or
-outside the page is recorded as `{step, focus: "BODY_OR_WRAPPED"}`.
+Returns `{negativeTabindex, tabWalk}`. The two probes are batched into a single script on
+purpose — a second `run-code` invocation would cost another model round-trip that re-sends
+this entire skill's context. Interpret the two keys separately, below.
 
 This walk stops after 60 Tab presses. If the last recorded step still lands on a real
 control (i.e. the page has more than ~60 focusable stops and the walk didn't wrap back to
@@ -81,15 +83,10 @@ style alone:
 playwright-cli screenshot --path=focus-check.png
 ```
 
-The Tab walk above cannot find controls that are *missing* from the tab order — Tab skips
-them, so they never appear as a stop. Run the second script to enumerate them directly:
-
-```bash
-playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/negative-tabindex.js"
-```
-
-Returns one entry per control-looking element removed from the tab order: `{tag, role,
-tabindex, label, visible}`.
+**`negativeTabindex`** — the Tab walk cannot find controls that are *missing* from the tab
+order, since Tab skips them and they never appear as a stop; this key enumerates them
+directly instead. One entry per control-looking element removed from the tab order:
+`{tag, role, tabindex, label, visible}`.
 
 Note (don't deep-probe) any entry with `visible: true` that is plainly a control a user
 would expect to reach by Tab → flag as **Moderate**, and suggest `/keyboard-dropdown-audit`

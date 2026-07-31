@@ -45,7 +45,9 @@ images/media, form labels, interactive naming, and keyboard dropdowns.
 - **`--session=<name>`** — prefix every command (`playwright-cli -s=<name> ...`). This
   matters for Step 3, which presses `Tab` across the page, so it MUST have its own session
   if other audits share the browser.
-- **Scripts** — each Step runs a bundled script via `--filename`. `$SKILL_DIR` means the
+- **Scripts** — all three Steps share ONE bundled script, run **once** via `--filename`
+  (`scripts/contrast-checks.js`); each Step then reads its own key from that single result.
+  `$SKILL_DIR` means the
   base directory for this skill given at the top of this file; substitute that absolute
   path. Never retype, inline, or re-create a script body. **A finding's `Repro` line must
   show the resolved absolute path**, never the literal `$SKILL_DIR` — the report is read
@@ -72,10 +74,11 @@ producing false-positive failures across the entire page — this reproduces on 
 Tailwind v4 app. The canvas `fillStyle` *getter* doesn't help either — it re-serializes in
 the original color-space string. The only reliable normalizer is to fill a 1×1 canvas
 pixel with the color and read back the rasterized bytes via `getImageData`, which always
-yields concrete sRGB 0–255 values regardless of input color space. All three scripts in
-`scripts/` each carry their own copy of this `toRgbArray`/`luminance`/`contrastRatio` trio
-for that reason — they are deliberately self-contained, so keep the trio consistent across
-the three if you change it.
+yields concrete sRGB 0–255 values regardless of input color space. `scripts/contrast-checks.js`
+carries this `toRgbArray`/`luminance`/`contrastRatio` trio twice — once in the batched
+read-only probe and once inside the Tab walk's per-stop `evaluate`, because each
+`page.evaluate` runs in a fresh page context and cannot close over Node-side values. Keep
+the two copies consistent if you change either.
 
 **Caveat — semi-transparent colors are not composited.** These scripts read each color's
 own bytes but do not blend a partially-transparent foreground/border over what's behind
@@ -89,13 +92,20 @@ screenshot**, the same as for background images/gradients.
 
 Sample rendered text nodes and compute contrast ratio against their effective background
 (4.5:1 normal text, 3:1 for text ≥24px or ≥18.66px bold). Open the resolved target URL
-(`playwright-cli open $url`, or `-s=<name> open $url`), then:
+(`playwright-cli open $url`, or `-s=<name> open $url`), then run **all three Steps' probes
+in one call**:
 
 ```bash
-playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/color-contrast.js"
+playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/contrast-checks.js"
 ```
 
-Returns `{sampledCount, totalTextNodes, failures}`. Each failure is
+Returns `{text, nonText, focus}` — one key per Step, batched into a single script on
+purpose, because each extra `run-code` invocation costs another model round-trip that
+re-sends this entire skill's context (this skill is the suite's most expensive, so the
+saving is largest here). Run it once and read all three keys from the one result; do not
+re-run it per Step. This Step interprets `text`, Step 2 `nonText`, Step 3 `focus`.
+
+**`text`** — `{sampledCount, totalTextNodes, failures}`. Each failure is
 `{text, tag, ratio, threshold, isLarge, pass, color, bg}` — `ratio` is the computed contrast,
 `threshold` the applicable 4.5:1 or 3:1, and `color`/`bg` the rasterized sRGB values.
 
@@ -122,7 +132,7 @@ requirement only bites on controls whose *identity depends on that boundary*: **
 text-labeled button is identified by its text (covered by 1.4.3), so it does NOT need a
 3:1 boundary.** Flagging every borderless button produces a wall of false positives (this
 was verified on a real Tailwind app — a naive "every control needs a 3:1 boundary" check
-flagged 23/23 controls). So `nontext-contrast.js` **classifies** each control and only
+flagged 23/23 controls). So the `nonText` probe **classifies** each control and only
 reports the ones with a genuine non-text obligation:
 
 - **`field`** (text `input`/`textarea`/`select`) — the border/fill is the only cue "you
@@ -134,11 +144,8 @@ reports the ones with a genuine non-text obligation:
   the element boundary; report as **manual-confirm** (check the icon's own contrast).
 - **`text-labeled`** — skipped entirely; identified by its text.
 
-```bash
-playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/nontext-contrast.js"
-```
-
-Returns `{checked, flagged, candidates}`. Each candidate is
+Read the **`nonText`** key from the `contrast-checks.js` result you already have — no second
+command. It holds `{checked, flagged, candidates}`. Each candidate is
 `{tag, type, role, kind, name, hasBorder, borderColor, borderVsExterior, bg, exterior,
 fillVsExterior, bestBoundary, note}`. `kind` is `field` / `stateful` / `icon-only` and `note`
 states what still needs confirming by eye for that kind. `bestBoundary` is the strongest
@@ -184,6 +191,7 @@ indicatorSource, uaAutoRing, outlineStyle, outlineWidth, boxShadow, vsExterior, 
 This walk stops after 60 Tab presses. If the tail was still landing on real controls when
 it stopped, focus-indicator contrast was only checked for the first ~60 stops — **note the
 truncation in the report** instead of implying full coverage.
+Read the **`focus`** key from the `contrast-checks.js` result you already have — no second
 
 Flag:
 - `uaAutoRing === true` → **do NOT flag from computed contrast, ever.** `outline-style:

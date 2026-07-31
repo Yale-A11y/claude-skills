@@ -31,7 +31,9 @@ images/media, form labels, interactive naming, focus visibility, contrast, and d
   inside it; re-running overwrites, intentionally, for a fix-then-reaudit loop).
 - **`--session=<name>`** — prefix every command (`playwright-cli -s=<name> ...`) so parallel
   audits don't collide on shared focus/navigation state.
-- **Scripts** — each Step runs a bundled script via `--filename`. `$SKILL_DIR` means the
+- **Scripts** — both Steps share ONE bundled script, run **once** via `--filename`
+  (`scripts/structure-checks.js`); each Step then reads its own key from that single result.
+  `$SKILL_DIR` means the
   base directory for this skill given at the top of this file; substitute that absolute
   path. Never retype, inline, or re-create a script body. **A finding's `Repro` line must
   show the resolved absolute path**, never the literal `$SKILL_DIR` — the report is read
@@ -51,13 +53,20 @@ the `/accessibility-audit` router.)
 
 ## Step 1 — Page-level structure
 
-Open the resolved target URL (`playwright-cli open $url`, or `-s=<name> open $url`), then:
+Open the resolved target URL (`playwright-cli open $url`, or `-s=<name> open $url`), then
+run **every structure probe in one call**:
 
 ```bash
-playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/page-checks.js"
+playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/structure-checks.js"
 ```
 
-Returns `{lang, title, h1Count, duplicateIds, hasSkipLink, skipLinkText,
+Returns `{page, landmarks, skipLink}` — all three probes batched into a single script on
+purpose, because each extra `run-code` invocation costs another model round-trip that
+re-sends this entire skill's context. This Step interprets `page` and `skipLink`; Step 2
+interprets `landmarks`. Run it once and read all three keys from the one result; do not
+re-run it per Step.
+
+**`page`** — `{lang, title, h1Count, duplicateIds, hasSkipLink, skipLinkText,
 skipLinkHref}`. `duplicateIds` lists each id used more than once.
 
 Flag:
@@ -82,14 +91,10 @@ Flag:
      correctly **keeps `activeElement` on `<body>`** while still moving the browser's
      *sequential-focus starting point* to the target — so the user's **next** `Tab`
      continues from there. Reading `activeElement` alone yields a **false positive** on a
-     skip link that works fine. Verify with this single script, which also presses `Tab`
-     after activation and checks whether focus lands inside the target:
+     skip link that works fine. The `skipLink` key already covers this — the script presses
+     `Enter`, then presses `Tab`, and checks whether focus lands inside the target:
 
-```bash
-playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/skip-link-verify.js"
-```
-
-Returns `{found, href, targetExists, afterEnter,
+**`skipLink`** — `{found, href, targetExists, afterEnter,
 focusInTargetAfterEnter, afterTab, focusInTargetAfterTab, works}`. `afterEnter`/`afterTab` are
 `{tag, id, text}` snapshots of where focus actually landed. `works` is the overall verdict — a
 skip link that exists but never moves focus returns `found: true, works: false`.
@@ -107,11 +112,8 @@ Interpret the result:
 
 ## Step 2 — Landmarks and heading hierarchy
 
-```bash
-playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/landmarks-headings.js"
-```
-
-Returns `{landmarkCounts, hasMain, headings, levelSkips}`.
+No second command — read the **`landmarks`** key from the `structure-checks.js` result you
+already have: `{landmarkCounts, hasMain, headings, levelSkips}`.
 `landmarkCounts` maps each landmark role to its count, `headings` is `{level, text}` in document
 order, and `levelSkips` is `{from, to}` for each skipped heading level.
 

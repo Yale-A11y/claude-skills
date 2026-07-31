@@ -58,13 +58,15 @@ skills/
   structure-audit/          every skill follows this shape
     SKILL.md                checks, flagging rules, findings format
     scripts/                browser probes, run via `run-code --filename`
-      page-checks.js
+      structure-checks.js   ONE script per skill — all its Steps' probes, one round-trip
     references/             loaded on demand, not on every run
       fix-patterns.md       read only when a run has ≥1 finding
       standalone-report.md  read only when run directly, not router-dispatched
 ```
 
 `SKILL.md` carries only what every run needs; `scripts/` and `references/` load when actually used, so a skill's context cost stays proportional to the work it does. Two skills deviate: the `accessibility-audit` router has no `references/` (it merges what its subagents return), and `keyboard-dropdown-audit` has no `standalone-report.md` because it only ever runs standalone — and no `scripts/` yet, since its probes are per-trigger parameterized and still inline pending extraction.
+
+Each sub-skill runs **one** script per audit, returning one keyed object its Steps read from — `contrast-checks.js` returns `{text, nonText, focus}`, `structure-checks.js` returns `{page, landmarks, skipLink}`. Probes are batched rather than one-per-Step because every extra `run-code` call is another model round-trip that re-sends the whole subagent context; splitting them back apart is the single largest avoidable input cost in the suite.
 
 The `scripts/*.js` files are the single source of truth for the probes — **never inline a script body back into `SKILL.md`** (`keyboard-dropdown-audit` is the one outstanding exception, not a pattern to copy). A Step names the script, describes the shape it returns, and interprets the fields. See `CLAUDE.md` for the full conventions.
 
