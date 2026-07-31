@@ -26,7 +26,11 @@ async page => {
     return out;
   });
 
-  const tabWalk = [];
+  // Returns a summary, not all 60 stops. A payload stays in the subagent's context and is
+  // re-sent on every later call, so rows no flagging rule reads are paid for repeatedly.
+  // Only stops that fail (`likelyNoVisibleFocus`) carry detail; the rest are counted.
+  const tabWalk = { stops: 0, wrapped: 0, withIndicator: 0, truncated: false, flagged: [] };
+  let lastStopWasRealControl = false;
   for (let i = 0; i < 60; i++) {
     await page.keyboard.press('Tab');
     const info = await page.evaluate(() => {
@@ -41,14 +45,21 @@ async page => {
         tabIndex: el.tabIndex,
         outlineStyle: style.outlineStyle,
         outlineWidth: style.outlineWidth,
-        boxShadow: style.boxShadow,
+        boxShadow: style.boxShadow.slice(0, 120),
         // A border-only focus change needs a before/blur comparison to detect; if one is
         // suspected, confirm from the screenshot rather than this flag.
         likelyNoVisibleFocus: noOutline && noBoxShadow,
       };
     });
-    tabWalk.push({ step: i, ...(info ?? { focus: 'BODY_OR_WRAPPED' }) });
+    if (!info) { tabWalk.wrapped++; lastStopWasRealControl = false; continue; }
+    tabWalk.stops++;
+    lastStopWasRealControl = true;
+    if (info.likelyNoVisibleFocus) tabWalk.flagged.push({ step: i, ...info });
+    else tabWalk.withIndicator++;
   }
+  // True means the walk hit its 60-press ceiling while still landing on real controls, so
+  // coverage was truncated and the report must say so rather than imply the whole page.
+  tabWalk.truncated = lastStopWasRealControl;
 
   return JSON.stringify({ negativeTabindex, tabWalk }, null, 1);
 }

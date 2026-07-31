@@ -68,13 +68,23 @@ Returns `{negativeTabindex, tabWalk}`. The two probes are batched into a single 
 purpose — a second `run-code` invocation would cost another model round-trip that re-sends
 this entire skill's context. Interpret the two keys separately, below.
 
-This walk stops after 60 Tab presses. If the last recorded step still lands on a real
-control (i.e. the page has more than ~60 focusable stops and the walk didn't wrap back to
-the top or reach `<body>`), coverage was truncated — **say so in the report** ("first 60
+**`tabWalk`** — a summary of the walk, not every stop:
+`{stops, wrapped, withIndicator, truncated, flagged}`. `stops` counts real controls focused,
+`wrapped` the presses that landed on `<body>`/outside the page, `withIndicator` the stops that
+had a visible indicator (i.e. passed). `flagged` carries the failures in full — one entry per
+stop with no visible indicator: `{step, tag, text, tabIndex, outlineStyle, outlineWidth,
+boxShadow, likelyNoVisibleFocus}`.
+
+Passing stops are counted rather than listed on purpose: a returned payload stays in this
+subagent's context and is re-sent on every later call, so rows no flagging rule reads get paid
+for many times over. If you need to describe coverage, use the counts.
+
+This walk stops after 60 Tab presses. `truncated: true` means it hit that ceiling while still
+landing on real controls, so coverage was cut short — **say so in the report** ("first 60
 focus stops checked") rather than implying the whole page was covered, and re-run from a
 deeper starting point if the tail matters.
 
-Flag any stop where `likelyNoVisibleFocus === true` → **Serious** (WCAG 2.4.7) — confirm
+Flag every entry in `flagged` (each has `likelyNoVisibleFocus === true`) → **Serious** (WCAG 2.4.7) — confirm
 visually with a screenshot before finalizing, since some sites replace the outline with a
 background-color or text-decoration change that this heuristic can't see in computed
 style alone:
@@ -180,4 +190,3 @@ never the whole file — below a `<!--A11Y:APPENDIX-->` marker line at the end o
 `<stem>.part.md`, under a `### Focus visibility` heading, so the router can
 assemble a self-contained appendix without loading this file itself. Skip that section entirely
 if this audit raised no findings.
-

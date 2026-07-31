@@ -188,4 +188,3 @@ never the whole file — below a `<!--A11Y:APPENDIX-->` marker line at the end o
 `<stem>.part.md`, under a `### Interactive naming` heading, so the router can
 assemble a self-contained appendix without loading this file itself. Skip that section entirely
 if this audit raised no findings.
-

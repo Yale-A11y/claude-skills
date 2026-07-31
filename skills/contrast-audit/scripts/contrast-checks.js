@@ -117,17 +117,14 @@ async page => {
       const best = Math.max(borderVsExterior || 0, fillVsExterior || 0);
       if (best >= 3) continue; // a measurable ≥3:1 boundary exists
 
-      const note = kind === 'field'
-        ? 'Form field: its border/fill is the primary cue that it is an input; measured boundary < 3:1 — likely a real 1.4.11 failure, confirm no other cue exists.'
-        : kind === 'stateful'
-        ? 'Stateful control: track/thumb/checked state are typically drawn via pseudo-elements or SVG this element-background check cannot read — confirm those graphics each meet 3:1 in a screenshot.'
-        : 'Icon-only control: identification rests on the icon glyph, not the element boundary — confirm the icon (SVG fill/stroke) meets 3:1 vs its background; the button boundary itself may not be required.';
-
+      // No per-candidate `note` prose: `kind` already selects the right guidance, and
+      // SKILL.md Step 2 states it once. Repeating ~190 chars per candidate put the same
+      // sentences in context N times and re-sent them on every later call.
       candidates.push({
         tag, type, role, kind, name: (el.getAttribute('aria-label') || visibleText).slice(0, 40),
         hasBorder, borderColor: hasBorder ? s.borderTopColor : null, borderVsExterior,
         bg: s.backgroundColor, exterior: `rgb(${exterior[0]}, ${exterior[1]}, ${exterior[2]})`,
-        fillVsExterior, bestBoundary: Math.round(best * 100) / 100, note,
+        fillVsExterior, bestBoundary: Math.round(best * 100) / 100,
       });
     }
 
@@ -139,7 +136,19 @@ async page => {
 
   // ---- Step 3: focus-indicator contrast (2.4.11 / 1.4.11) ----
   // Runs last: it moves focus, which the two read-only probes above must not see.
-  const focus = [];
+  //
+  // Returns a summary, not all 60 stops. A payload sits in the subagent's context and is
+  // re-sent on every later call, so per-stop rows that no flagging rule reads are paid for
+  // ~10 times over. Only two buckets carry detail: `flagged` (becomes a finding directly)
+  // and `uaAutoRings` (judged from a screenshot, so its computed-contrast numbers are
+  // deliberately omitted — the rule forbids failing an auto ring on them). Stops with no
+  // indicator at all are counted, not listed: this skill defers those to
+  // focus-visibility-audit rather than reporting them as contrast failures.
+  const focus = {
+    stops: 0, wrapped: 0, noIndicator: 0, passing: 0, truncated: false,
+    uaAutoRings: [], flagged: [],
+  };
+  let lastStopWasRealControl = false;
   for (let i = 0; i < 60; i++) {
     await page.keyboard.press('Tab');
     const info = await page.evaluate((COLOR_SRC) => {
@@ -191,8 +200,23 @@ async page => {
         vsExterior, vsInterior,
       };
     }, COLOR_SRC);
-    focus.push({ step: i, ...(info ?? { focus: 'BODY_OR_WRAPPED' }) });
+    if (!info) { focus.wrapped++; lastStopWasRealControl = false; continue; }
+    focus.stops++;
+    lastStopWasRealControl = true;
+    if (info.uaAutoRing) {
+      // Screenshot-judged: keep only what identifies the stop.
+      focus.uaAutoRings.push({ step: i, tag: info.tag, text: info.text });
+    } else if (!info.hasIndicator) {
+      focus.noIndicator++;            // presence problem — focus-visibility-audit's call
+    } else if (info.vsExterior !== null && info.vsExterior < 3) {
+      focus.flagged.push({ step: i, ...info });
+    } else {
+      focus.passing++;
+    }
   }
+  // True means the walk hit its 60-press ceiling while still landing on real controls, so
+  // coverage was truncated and the report must say so rather than imply the whole page.
+  focus.truncated = lastStopWasRealControl;
 
   return JSON.stringify({ ...staticChecks, focus }, null, 1);
 }

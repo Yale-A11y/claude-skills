@@ -147,8 +147,10 @@ reports the ones with a genuine non-text obligation:
 Read the **`nonText`** key from the `contrast-checks.js` result you already have — no second
 command. It holds `{checked, flagged, candidates}`. Each candidate is
 `{tag, type, role, kind, name, hasBorder, borderColor, borderVsExterior, bg, exterior,
-fillVsExterior, bestBoundary, note}`. `kind` is `field` / `stateful` / `icon-only` and `note`
-states what still needs confirming by eye for that kind. `bestBoundary` is the strongest
+fillVsExterior, bestBoundary}`. `kind` is `field` / `stateful` / `icon-only`. What still needs
+confirming by eye for each kind is spelled out in the flagging rules below — the script
+deliberately does not repeat that prose per candidate, since it is identical every time and
+would be re-sent on every later call. `bestBoundary` is the strongest
 boundary ratio found (border or fill vs. the exterior background).
 
 Then take a screenshot and confirm each candidate before reporting it — this is a
@@ -164,10 +166,14 @@ Flag:
   — a text field with no ≥3:1 boundary genuinely fails 1.4.11 unless some cue this check
   can't see (background image, inset shadow, `::before`) supplies one. Confirm on the
   screenshot, then report.
-- `kind: 'stateful'` or `kind: 'icon-only'` → report as **Moderate — needs manual
-  confirmation**, using the `note` verbatim: the DOM boundary this check measured is not
-  the graphic that actually conveys the control (a slider's track/thumb, an icon glyph),
-  so verify *that* graphic's 3:1 on the screenshot and drop the candidate if it passes.
+- `kind: 'stateful'` → report as **Moderate — needs manual confirmation**, wording it as:
+  *track/thumb/checked state are typically drawn via pseudo-elements or SVG that this
+  element-background check cannot read — confirm those graphics each meet 3:1 in a
+  screenshot.* Drop the candidate if they do.
+- `kind: 'icon-only'` → report as **Moderate — needs manual confirmation**, wording it as:
+  *identification rests on the icon glyph, not the element boundary — confirm the icon (SVG
+  fill/stroke) meets 3:1 against its background; the button boundary itself may not be
+  required.* Drop the candidate if it passes.
 - **Beyond the enumerated controls, eyeball the screenshot for graphics that convey
   information** — chart series, status dots, required-field markers, or a state shown only
   by a faint tint — and note any below 3:1 manually; these can't be enumerated generically.
@@ -179,43 +185,55 @@ indicator color's contrast against the colors adjacent to it (the surface behind
 control on the outside, and the control's own fill on the inside). An indicator that's
 present but low-contrast against what it's drawn on is effectively invisible.
 
-```bash
-playwright-cli --raw run-code --filename="$SKILL_DIR/scripts/focus-contrast.js"
-```
-
-Returns one entry per Tab stop: `{step, tag, text, hasIndicator,
-indicatorSource, uaAutoRing, outlineStyle, outlineWidth, boxShadow, vsExterior, vsInterior}`.
-`vsExterior`/`vsInterior` are the indicator's contrast against the colors on either side of it;
-`uaAutoRing: true` means the ring is the browser default rather than an authored style.
-
-This walk stops after 60 Tab presses. If the tail was still landing on real controls when
-it stopped, focus-indicator contrast was only checked for the first ~60 stops — **note the
-truncation in the report** instead of implying full coverage.
 Read the **`focus`** key from the `contrast-checks.js` result you already have — no second
+command. The Tab walk runs last inside that script, after the two read-only probes, so it
+cannot disturb them. It holds a summary rather than every stop:
+`{stops, wrapped, noIndicator, passing, truncated, uaAutoRings, flagged}`.
+
+- **`flagged`** — authored indicators measuring under 3:1, in full: `{step, tag, text,
+  hasIndicator, indicatorSource, uaAutoRing, outlineStyle, outlineWidth, boxShadow,
+  vsExterior, vsInterior}`. `vsExterior`/`vsInterior` are the indicator's contrast against the
+  colors on either side of it. These are your findings.
+- **`uaAutoRings`** — `{step, tag, text}` only, for browser-default rings. Their computed
+  contrast is deliberately **not** returned: the rule below forbids failing an auto ring on it,
+  so reporting the numbers would only invite the mistake.
+- **`noIndicator`** / **`passing`** / **`stops`** / **`wrapped`** — counts. Stops with no
+  indicator at all are counted, not listed, because this skill defers them to
+  `focus-visibility-audit` rather than reporting them here.
+
+Passing and deferred stops are counted rather than listed on purpose: a returned payload stays
+in this subagent's context and is re-sent on every later call, so rows no rule reads get paid
+for many times over.
+
+This walk stops after 60 Tab presses. `truncated: true` means it hit that ceiling while still
+landing on real controls, so focus-indicator contrast was only checked for the first ~60
+stops — **note the truncation in the report** instead of implying full coverage.
 
 Flag:
-- `uaAutoRing === true` → **do NOT flag from computed contrast, ever.** `outline-style:
+- every entry in **`uaAutoRings`** → **do NOT flag from computed contrast, ever.** `outline-style:
   auto` is the browser's native focus ring, painted as a two-tone stroke (a colored line
   plus a contrasting white/dark companion line) precisely so it stays visible on any
-  background. The CSSOM exposes only the single author `outline-color`, so the `vsExterior`
-  / `vsInterior` reported for these stops are computed from *half* the ring and will
-  under-report it — treating them as failures produces a false positive on a ring that is
-  actually fine (a common one on dark surfaces, where the author color is dark-ish but the
-  UA companion line is white). Judge auto rings **only** from a zoomed screenshot of the
-  focused state: report a finding **only if** the rendered ring is genuinely
-  indistinguishable from the background there. Otherwise treat as pass.
-- `uaAutoRing === false` **and** `hasIndicator === true` **and** `vsExterior < 3` →
-  **Serious** (WCAG 2.4.11 / 1.4.11) — the focus ring is drawn against the surrounding
-  surface but doesn't stand out from it, so a keyboard user gets no clear signal of where
-  focus is. Report `vsInterior` too; if *both* sides are < 3:1 the indicator is
-  essentially invisible everywhere. (For a layered box-shadow ring, `vsExterior` already
-  reflects the best-contrasting layer, so this only fires when *every* layer is < 3:1.)
-- `hasIndicator === false` (no measurable outline/box-shadow ring at this stop) → this is
-  a **presence** problem, not a contrast one — **note it and defer to
-  `focus-visibility-audit`**, don't report it here as a contrast failure (avoids
-  double-counting the same control across two skills).
+  background. The CSSOM exposes only the single author `outline-color`, so any contrast
+  computed for these stops comes from *half* the ring and under-reports it — which is why the
+  script returns no ratios for them at all. Treating such a ratio as a failure produces a
+  false positive on a ring that is actually fine (a common one on dark surfaces, where the
+  author color is dark-ish but the UA companion line is white). Judge auto rings **only** from
+  a zoomed screenshot of the focused state: report a finding **only if** the rendered ring is
+  genuinely indistinguishable from the background there. Otherwise treat as pass.
+- every entry in **`flagged`** (an authored indicator — `uaAutoRing: false`,
+  `hasIndicator: true` — with `vsExterior < 3`) → **Serious** (WCAG 2.4.11 / 1.4.11): the
+  focus ring is drawn against the surrounding surface but doesn't stand out from it, so a
+  keyboard user gets no clear signal of where focus is. Report `vsInterior` too; if *both*
+  sides are < 3:1 the indicator is essentially invisible everywhere. (For a layered
+  box-shadow ring, `vsExterior` already reflects the best-contrasting layer, so this only
+  fires when *every* layer is < 3:1.)
+- a non-zero **`noIndicator`** count (stops with no measurable outline/box-shadow ring) → a
+  **presence** problem, not a contrast one — **note the count and defer to
+  `focus-visibility-audit`**, don't report those here as contrast failures (avoids
+  double-counting the same control across two skills). This is why they come back as a count
+  with no per-stop detail.
 - **Always confirm with a screenshot of the focused state before finalizing, and
-  mandatorily for any `uaAutoRing` stop** — some indicators are a background/
+  mandatorily for every `uaAutoRings` entry** — some indicators are a background/
   text-decoration change this heuristic can't read from computed style, box-shadow color
   extraction is approximate, and `outline: auto` rings must be judged from rendered pixels
   (zoom in on the ring — the browser's companion line is thin). Screenshot at high
@@ -316,4 +334,3 @@ never the whole file — below a `<!--A11Y:APPENDIX-->` marker line at the end o
 `<stem>.part.md`, under a `### Color contrast` heading, so the router can
 assemble a self-contained appendix without loading this file itself. Skip that section entirely
 if this audit raised no findings.
-

@@ -366,4 +366,3 @@ full findings list. The file is where the detail lives.
 If the user only wants one area checked (e.g. "just check color contrast"), skip the
 router entirely and invoke that sub-skill directly (`/contrast-audit $url`) — in
 standalone mode it writes its own focused report. The router is for a full, merged pass.
-
