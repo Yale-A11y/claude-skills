@@ -322,7 +322,7 @@ awk 'FNR==1{sec=""}
   cat "{parts}/00-header.md"
   [ -s "{parts}/_i.cat" ] && cat "{parts}/_i.cat"
   printf '\n---\n\n## Findings\n\n'
-  cat "{parts}/_f.cat"
+  cat "{parts}/_f.cat" 2>/dev/null
   if [ -s "{parts}/_a.cat" ]; then
     printf '\n## Appendix — reference fix patterns\n\n'
     cat "{parts}/_a.cat"
@@ -330,7 +330,7 @@ awk 'FNR==1{sec=""}
 } > "$output"
 n=$(grep -c '^#### ' "$output"); l=$(wc -l < "$output")
 printf 'assembled: %s findings, %s lines\n' "$n" "$l"; tail -3 "$output"
-if [ "$l" -gt 20 ] && grep -q '^## Findings' "$output"; then rm -rf "{parts}" && echo 'scratch removed'
+if [ -s "{parts}/_f.cat" ] && [ "$l" -gt 20 ]; then rm -rf "{parts}" && echo 'scratch removed'
 else echo "VERIFY FAILED — scratch kept at {parts}"; fi
 ```
 
@@ -344,10 +344,18 @@ heading when nothing cited a pattern. Never read the sub-skills'
 `references/fix-patterns.md` files yourself to pad it out.
 
 Compare the printed `#### ` count against the total findings across the manifests yourself —
-they must match, and the tail must show real content rather than a truncated line. The shell
-guard deliberately does **not** require a non-zero count: an audit where every category came
-back clean is a valid report with zero `#### ` headings, and failing it would strand the
-scratch dir on exactly the runs that went best. If the guard reported `VERIFY FAILED`,
+they must match, and the tail must show real content rather than a truncated line.
+
+The guard checks that `_f.cat` is **non-empty**, not that the finding count is non-zero. The
+two failure modes it has to separate look identical to a count: an audit where every category
+came back clean is a valid report with zero `#### ` headings, while an audit where no subagent
+managed to write a part file is a broken report that also has zero. A clean category still
+writes its `### … findings` heading and `_No findings in this category._`, so `_f.cat` exists
+and has content; nothing-landed leaves it absent. Do not "simplify" this to a count test —
+requiring a non-zero count strands the scratch dir on the runs that went best, and testing for
+the `## Findings` heading instead is vacuous, since the `printf` above emits it unconditionally.
+
+If the guard reported `VERIFY FAILED`,
 the scratch directory is still there on purpose — report its path, since the part files are
 the recovery material. `rm -rf` runs only against the `mktemp -d` path from Step 2, never a
 path derived from `$output` or from anything on the page.
