@@ -6,11 +6,13 @@ The deliverable of every skill is a self-contained, **fix-ready Markdown report*
 
 ## What's inside
 
-The `accessibility-audit` skill is an **orchestrator**: it opens the page once, fingerprints which accessibility surfaces exist, then dispatches only the relevant category sub-skills as **parallel subagents** and merges their findings into one combined report.
+The `accessibility-audit` skill is an **orchestrator**: it fingerprints which accessibility surfaces exist on the page (or pages), then dispatches only the relevant category sub-skills as **parallel subagents** and merges their findings into one combined report.
+
+It audits one page by default, several with `--pages`, or a whole same-origin site with `--all-pages`. In a multi-page run, findings that repeat across pages are **deduplicated into one entry** carrying an affected-pages list, so a header contrast failure present on every page is one fix, not forty — and the report separates site-wide (template-level) findings from page-specific ones.
 
 | Skill | What it audits |
 |-------|----------------|
-| `accessibility-audit` | Router/orchestrator — fingerprints the page and dispatches the sub-skills below |
+| `accessibility-audit` | Router/orchestrator — fingerprints the page(s), optionally discovers the site, and dispatches the sub-skills below |
 | `structure-audit` | Document `lang`, page title, single `h1`, duplicate ids, skip links, landmarks, heading hierarchy |
 | `images-media-audit` | `alt` text, image-only links/buttons, video captions, unnamed icon SVGs, CSS/icon-font icons |
 | `form-labels-audit` | Missing/visual-only labels, orphaned `<label for>`, placeholder-only labels, error wiring, `autocomplete` |
@@ -64,7 +66,7 @@ skills/
       standalone-report.md  read only when run directly, not router-dispatched
 ```
 
-`SKILL.md` carries only what every run needs; `scripts/` and `references/` load when actually used, so a skill's context cost stays proportional to the work it does. Two skills deviate: the `accessibility-audit` router has no `references/` (it merges what its subagents return), and `keyboard-dropdown-audit` has no `standalone-report.md` because it only ever runs standalone — and no `scripts/` yet, since its probes are per-trigger parameterized and still inline pending extraction.
+`SKILL.md` carries only what every run needs; `scripts/` and `references/` load when actually used, so a skill's context cost stays proportional to the work it does. Two skills deviate: the `accessibility-audit` router has no `references/` (it merges what its subagents return) but does carry two scripts — `fingerprint.js` to decide the dispatch set and `crawl.js` for `--all-pages` discovery — and `keyboard-dropdown-audit` has no `standalone-report.md` because it only ever runs standalone, and no `scripts/` yet, since its probes are per-trigger parameterized and still inline pending extraction.
 
 Each sub-skill runs **one** script per audit, returning one keyed object its Steps read from — `contrast-checks.js` returns `{text, nonText, focus}`, `structure-checks.js` returns `{page, landmarks, skipLink}`. Probes are batched rather than one-per-Step because every extra `run-code` call is another model round-trip that re-sends the whole subagent context; splitting them back apart is the single largest avoidable input cost in the suite.
 
@@ -75,10 +77,23 @@ The `scripts/*.js` files are the single source of truth for the probes — **nev
 ```
 /accessibility-audit https://example.com
 /accessibility-audit localhost:3000 ./reports/a11y.md
+/accessibility-audit https://example.com --pages=/about,/pricing
+/accessibility-audit https://example.com ~/reports/ --all-pages --max-pages=12
+/contrast-audit https://example.com --pages=/about        # one category, several pages
 /keyboard-dropdown-audit https://example.com
 ```
 
 Each skill takes the target URL as its first argument and an optional output path as the second. Re-running the same path **overwrites** the report — intentional, for a fix-then-reaudit loop.
+
+**Multi-page flags** (router, and `--pages` on any sub-skill):
+
+| Flag | Effect |
+|------|--------|
+| `--pages=/a,/b` | Audit these **in addition** to the URL. Absolute URLs or paths relative to the primary origin. |
+| `--all-pages` | Discover every same-origin page: `/sitemap.xml` if present, else a depth-limited link crawl. |
+| `--max-pages=N` | Cap the audited page count (default 20). Truncation is always reported. |
+
+`--all-pages` never crawls blindly: it stays on one origin, honors `robots.txt`, skips query strings and state-changing paths like `/logout`, and collapses URLs by **template shape** so a directory of hundreds of person pages contributes a few representatives instead of consuming the entire budget. Page count is the cost multiplier — the router states the count and confirms before dispatching a large run.
 
 ## Changelog
 

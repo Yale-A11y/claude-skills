@@ -1,7 +1,7 @@
 {
   "name": "accessibility-audit",
-  "version": "0.3.0",
-  "description": "Browser-driven WCAG accessibility audit suite. A router skill fingerprints a live page and dispatches category sub-skills (structure, images/media, form labels, interactive names, focus visibility, contrast) as parallel subagents, merging their results into one fix-ready Markdown report. Includes a standalone keyboard-dropdown audit. All checks run through playwright-cli against the live DOM/CSSOM — never by reading source code.",
+  "version": "0.4.0",
+  "description": "Browser-driven WCAG accessibility audit suite. A router skill fingerprints one page, several pages (--pages), or a whole site (--all-pages), then dispatches category sub-skills (structure, images/media, form labels, interactive names, focus visibility, contrast) as parallel subagents, deduplicating findings that repeat across pages into one entry with an affected-pages list and merging everything into one fix-ready Markdown report. Includes a standalone keyboard-dropdown audit. All checks run through playwright-cli against the live DOM/CSSOM — never by reading source code.",
   "author": {
     "name": "Nick Taylor",
     "email": "nick.taylor@yale.edu"
@@ -18,6 +18,8 @@
     "contrast",
     "keyboard",
     "aria",
-    "screen-reader"
+    "screen-reader",
+    "crawl",
+    "multi-page"
   ]
 }
